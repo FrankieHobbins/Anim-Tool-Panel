@@ -181,6 +181,18 @@ def export_fbx_anim():
     currentscene = bpy.context.scene
 
     exportpath = bpy.context.scene.FbxExportPath + bpy.context.scene.name +".fbx"
+    
+    #sets correct mute and unmuting
+    for nlatrack in bpy.context.object.animation_data.nla_tracks:
+        bpy.context.object.animation_data.nla_tracks.remove(nlatrack)
+
+    for action in bpy.data.actions:
+        print(action)
+        bpy.context.object.animation_data.nla_tracks.new()
+        bpy.context.object.animation_data.nla_tracks[(len(bpy.context.object.animation_data.nla_tracks)-1)].name = action.name
+        bpy.context.object.animation_data.nla_tracks[(len(bpy.context.object.animation_data.nla_tracks)-1)].strips.new(action.name,0,action)        
+        bpy.context.object.animation_data.nla_tracks[(len(bpy.context.object.animation_data.nla_tracks)-1)].mute = not action.Export 
+    
     #go though strips set it to true, export fbx with strip name then set back to false  
     for a in obj.animation_data.nla_tracks:
         #dont export strips with $ at the end
@@ -225,7 +237,61 @@ def export_fbx_anim():
 
     currentscene.render.fps = 30
     bpy.context.object.animation_data.action = currentaction
-    return()     
+    return()
+    
+def export_fbx_anim_old():
+    obj = bpy.context.object                    #active object
+    scn = bpy.context.scene                     #current scene
+
+    currentaction = bpy.context.object.animation_data.action
+    currentscene = bpy.context.scene
+
+    exportpath = bpy.context.scene.FbxExportPath + bpy.context.scene.name +".fbx"
+    #go though strips set it to true, export fbx with strip name then set back to false  
+    for a in obj.animation_data.nla_tracks:
+        #dont export strips with $ at the end
+        if a.name[-1:] != "$":
+            #always export active action
+            if currentaction.name == a.name:
+                a.mute = False
+                print(a.name)
+            # check to see if track is muted, if it is dont bother exporting it   
+            if a.mute == False: 
+                print ("**  exporting action", a.name)
+                #check speed bone and change scene fps for export
+                for act in bpy.data.actions:
+                    if a.name == act.name:
+                        for fcurve in bpy.data.actions[act.name].fcurves:
+                            b = (str(fcurve.data_path))
+                            if "speed" in b:
+                                if "location" in b:
+                                    if fcurve.array_index == 1:
+                                        framerange = fcurve.keyframe_points[len(fcurve.keyframe_points)-1].co[0] - fcurve.keyframe_points[0].co[0]#-1
+                                        distance = fcurve.keyframe_points[len(fcurve.keyframe_points)-1].co[1] - fcurve.keyframe_points[0].co[1] 
+                                        if distance > 0:
+                                            #print ("fps =",(2/distance) * framerange)
+                                            currentscene.render.fps = int((2/distance)*framerange)
+                                        else:
+                                            currentscene.render.fps = 30
+                #sets action to be the same as clip name in the stash
+                bpy.context.object.animation_data.action = bpy.data.actions[a.strips[0].name]
+                #makes a strip unmuted
+                a.strips[0].mute=False
+                bpy.context.scene.update() #update
+                filenametoexport = str(a.strips[0].name)                
+                filenametoexport = filenametoexport.replace(bpy.context.scene.name, bpy.context.scene.name + bpy.context.scene.AnimMiddleFix)
+                exportpathanim = bpy.context.scene.FbxExportPath + "\\" + filenametoexport + ".fbx"
+                bpy.ops.export_scene.fbx(filepath=exportpathanim, **export_fbx_anim_settings())
+                    #mute strip again so it dosent get exported with next strip
+                a.strips[0].mute=True
+                bpy.context.scene.update()  #update
+    #leave all strips set to mute
+    for a in obj.animation_data.nla_tracks:
+        a.strips[0].mute=True
+
+    currentscene.render.fps = 30
+    bpy.context.object.animation_data.action = currentaction
+    return()  
 
 #######################
 ###### OPERATORS ######
@@ -571,14 +637,20 @@ class FbxExport(bpy.types.Operator):
 
     def execute(self, context): 
         export_fbx()        
-        return{'FINISHED'}    
+        return{'FINISHED'}  
+
+class FActionList(bpy.types.UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname):
+        row = layout.row(False)
+        row.prop(item,"name", text = "", emboss= False)
+        row.prop(item,"Export", text = "");     
+
     
-
-
 ################
 ###### UI ######
 ################
     
+  
 class FrankiesAnimationTools(bpy.types.Panel):
     """Creates a custom rigging Panel in the 3D View"""
     bl_label = "Frankies Animation Tools"
@@ -590,35 +662,34 @@ class FrankiesAnimationTools(bpy.types.Panel):
     
     bpy.types.Scene.FbxExportPath = bpy.props.StringProperty(name = "Path")
     bpy.types.Scene.AnimMiddleFix = bpy.props.StringProperty(name = "Anim String")
+    bpy.types.Action.Export = bpy.props.BoolProperty(name= "Export")
     
     def draw(self, context):
         layout = self.layout
-
         obj = context.object
 
-        col = layout.column(align=True)
-        col.label(text="Keyframes:")
+        col = layout.column(align=True)        
         row = layout.row(align=True)
-        
-        """        
-        row.prop(obj, "hide", text="hide obje")    
-        row.prop(obj, "hide_select", text="hide select")    
-        row.prop(context.object, "hide_render")
-        """
-                
-        row.label(text="Fbx Export:")
+
+        row.label(text="Fbx Export to :")
+        row.label(text= bpy.context.scene.FbxExportPath + bpy.context.scene.name +".fbx")        
         row = layout.row(align=True)
         row.prop(context.scene, "FbxExportPath")
         row = layout.row(align=True)
         row.prop(context.scene, "name", text="Filename")
         row = layout.row(align=True)
         row.prop(context.scene, "AnimMiddleFix")
-        row = layout.row(align=True)
+        row = layout.row(align=True)       
         
         row.operator("bone.fbxexportmesh", text="Export Mesh")    
         row.operator("bone.fbxexportanim", text="Export Animations")    
-        row.operator("bone.fbxexport", text="Export All")    
+        row.operator("bone.fbxexport", text="Export All")  
+               
+        layout.template_list("FActionList", "", bpy.data, "actions", obj, "action_list_index", rows=2)        
         
+        col = layout.column(align=True)  
+        row = layout.row(align=True)    
+        col.label(text="Keyframes:")
         col.operator("bone.keyframeallactions", text="Keyframe all actions")
         col.operator("bone.removekeyframes", text="Remove all keyframes ")
         col.operator("bone.removekeyframesapartfromone", text="Remove all but one")
@@ -665,7 +736,13 @@ class FrankiesAnimationTools(bpy.types.Panel):
         row = layout.row(align=True)        
         row.operator("bone.togglexray", text="Toggle Xray")
         row = layout.row(align=True)
-        row.operator("bone.toggleselectability", text="Toggle Selectability")
+        row.operator("bone.toggleselectability", text="Toggle Selectability")        
+        
+        row.prop(obj, "hide", text="hide obje")    
+        row.prop(obj, "hide_select", text="hide select")    
+        row.prop(context.object, "hide_render")
+        
+                
 
 ######################
 ###### REGISTER ######
@@ -673,6 +750,7 @@ class FrankiesAnimationTools(bpy.types.Panel):
     
 def register():   
     
+    bpy.types.Object.action_list_index = bpy.props.IntProperty()
     bpy.utils.register_class(KeyFrameAllActions)
     bpy.utils.register_class(RemoveKeyFrames)
     bpy.utils.register_class(RemoveKeyFramesApartFromOne)
@@ -694,6 +772,7 @@ def register():
     bpy.utils.register_class(FbxExportMesh)
     bpy.utils.register_class(FbxExportAnim)
     bpy.utils.register_class(FbxExport)
+    bpy.utils.register_class(FActionList)   
     bpy.utils.register_class(FrankiesAnimationTools)
 
 def unregister():      
@@ -719,7 +798,9 @@ def unregister():
     bpy.utils.unregister_class(FbxExportMesh)
     bpy.utils.unregister_class(FbxExportAnim)
     bpy.utils.unregister_class(FbxExport)
+    bpy.utils.unregister_class(FActionList)
     bpy.utils.unregister_class(FrankiesAnimationTools)
+    del bpy.types.Object.action_list_index
 
 if __name__ == "__main__":
     register()
