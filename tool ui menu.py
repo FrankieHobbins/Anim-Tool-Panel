@@ -25,27 +25,207 @@ bl_info = {
     "category": "Animation",
     }
 
-
 import bpy
 from bpy.props import *
-
-obj = bpy.context.object                    #active object
-scn = bpy.context.scene                     #current scene
-
-if obj.animation_data != None:
-    action = obj.animation_data.action      #current action
 
 ########################
 ####### FUNCTIONS ######
 ########################
 
-def whatsMyAction():
+def whatsMyAction():    
     i = 0
+    
+    obj = bpy.context.object                    #active object
+    scn = bpy.context.scene                     #current scene
+    
+    if obj.animation_data != None:
+        action = obj.animation_data.action      #current action       
+    
     for action in bpy.data.actions:
         if action.name == bpy.context.object.animation_data.action.name:
             actionindex = i
         i += 1
     return(actionindex)
+
+#below was ripped from export_fbx_bin.py
+def export_fbx_settings():    
+    return {
+        # These options seem to produce the same result as the old Ascii exporter in Unity3D:
+        "version": 'BIN7400',
+        "axis_up": 'Y',
+        "axis_forward": '-Z',
+        #"global_matrix": Matrix.Rotation(-math.pi / 2.0, 4, 'X'),
+        # Should really be True, but it can cause problems if a model is already in a scene or prefab
+        # with the old transforms.
+        "bake_space_transform": False,
+
+        "use_selection": False,
+
+        "object_types": {'ARMATURE', 'EMPTY', 'MESH', 'OTHER'},
+        "use_mesh_modifiers": True,
+        "use_mesh_edges": False,
+        "mesh_smooth_type": 'FACE',
+        "use_tspace": False,  # XXX Why? Unity is expected to support tspace import...
+
+        "use_armature_deform_only": True,
+
+        "use_custom_props": True,
+
+        "bake_anim": True,
+        "bake_anim_simplify_factor": 1.0,
+        "bake_anim_step": 1.0,
+        "bake_anim_use_nla_strips": True,
+        "bake_anim_use_all_actions": True,
+        "add_leaf_bones": False,  # Avoid memory/performance cost for something only useful for modelling
+        "primary_bone_axis": 'Y',  # Doesn't really matter for Unity, so leave unchanged
+        "secondary_bone_axis": 'X',
+
+        "path_mode": 'AUTO',
+        "embed_textures": False,
+        "batch_mode": 'OFF',
+        "apply_unit_scale": False,
+    }
+
+def export_fbx_mesh_settings():
+    return {
+        # These options seem to produce the same result as the old Ascii exporter in Unity3D:
+        "version": 'BIN7400',
+        "axis_up": 'Y',
+        "axis_forward": '-Z',
+        #"global_matrix": Matrix.Rotation(-math.pi / 2.0, 4, 'X'),
+        # Should really be True, but it can cause problems if a model is already in a scene or prefab
+        # with the old transforms.
+        "bake_space_transform": False,
+
+        "use_selection": False,
+
+        "object_types": {'ARMATURE', 'EMPTY', 'MESH', 'OTHER'},
+        "use_mesh_modifiers": True,
+        "use_mesh_edges": False,
+        "mesh_smooth_type": 'FACE',
+        "use_tspace": False,  # XXX Why? Unity is expected to support tspace import...
+
+        "use_armature_deform_only": True,
+
+        "use_custom_props": True,
+
+        "bake_anim": False,
+        "bake_anim_simplify_factor": 1.0,
+        "bake_anim_step": 1.0,
+        "bake_anim_use_nla_strips": False,
+        "bake_anim_use_all_actions": False,
+        "add_leaf_bones": False,  # Avoid memory/performance cost for something only useful for modelling
+        "primary_bone_axis": 'Y',  # Doesn't really matter for Unity, so leave unchanged
+        "secondary_bone_axis": 'X',
+
+        "path_mode": 'AUTO',
+        "embed_textures": False,
+        "batch_mode": 'OFF',
+        "apply_unit_scale": False,
+    }
+    
+def export_fbx_anim_settings():
+    return {
+        # These options seem to produce the same result as the old Ascii exporter in Unity3D:
+        "version": 'BIN7400',
+        "axis_up": 'Y',
+        "axis_forward": '-Z',
+        #"global_matrix": Matrix.Rotation(-math.pi / 2.0, 4, 'X'),
+        # Should really be True, but it can cause problems if a model is already in a scene or prefab
+        # with the old transforms.
+        "bake_space_transform": False,
+
+        "use_selection": False,
+
+        #"object_types": {'ARMATURE', 'EMPTY', 'MESH', 'OTHER'},
+        "object_types": {'ARMATURE', 'EMPTY', 'OTHER'}, #note empty object is required in the scene or else unity breaks hierarchy by nurfing rig object and going straight to root
+        "use_mesh_modifiers": True,
+        "use_mesh_edges": False,
+        "mesh_smooth_type": 'FACE',
+        "use_tspace": False,  # XXX Why? Unity is expected to support tspace import...
+
+        "use_armature_deform_only": True,
+
+        "use_custom_props": True,
+    
+        "bake_anim": True,
+        "bake_anim_simplify_factor": 1.0,
+        "bake_anim_step": 1.0,
+        "bake_anim_use_nla_strips": True,
+        "bake_anim_use_all_actions": False,
+        "add_leaf_bones": False,  # Avoid memory/performance cost for something only useful for modelling
+        "primary_bone_axis": 'Y',  # Doesn't really matter for Unity, so leave unchanged
+        "secondary_bone_axis": 'X',
+
+        "path_mode": 'AUTO',
+        "embed_textures": False,
+        "batch_mode": 'OFF',
+        "apply_unit_scale": False,
+    }
+
+def export_fbx():    
+    exportpath = bpy.context.scene.FbxExportPath + bpy.context.scene.name +".fbx"      
+    bpy.ops.export_scene.fbx(filepath=exportpath, **export_fbx_settings())
+    return() 
+
+def export_fbx_mesh():
+    exportpath = bpy.context.scene.FbxExportPath + bpy.context.scene.name +".fbx"      
+    bpy.ops.export_scene.fbx(filepath=exportpath, **export_fbx_mesh_settings())
+    return() 
+
+def export_fbx_anim():
+    obj = bpy.context.object                    #active object
+    scn = bpy.context.scene                     #current scene
+
+    currentaction = bpy.context.object.animation_data.action
+    currentscene = bpy.context.scene
+
+    exportpath = bpy.context.scene.FbxExportPath + bpy.context.scene.name +".fbx"
+    #go though strips set it to true, export fbx with strip name then set back to false  
+    for a in obj.animation_data.nla_tracks:
+        #dont export strips with $ at the end
+        if a.name[-1:] != "$":
+            #always export active action
+            if currentaction.name == a.name:
+                a.mute = False
+                print(a.name)
+            # check to see if track is muted, if it is dont bother exporting it   
+            if a.mute == False: 
+                print ("**  exporting action", a.name)
+                #check speed bone and change scene fps for export
+                for act in bpy.data.actions:
+                    if a.name == act.name:
+                        for fcurve in bpy.data.actions[act.name].fcurves:
+                            b = (str(fcurve.data_path))
+                            if "speed" in b:
+                                if "location" in b:
+                                    if fcurve.array_index == 1:
+                                        framerange = fcurve.keyframe_points[len(fcurve.keyframe_points)-1].co[0] - fcurve.keyframe_points[0].co[0]#-1
+                                        distance = fcurve.keyframe_points[len(fcurve.keyframe_points)-1].co[1] - fcurve.keyframe_points[0].co[1] 
+                                        if distance > 0:
+                                            #print ("fps =",(2/distance) * framerange)
+                                            currentscene.render.fps = int((2/distance)*framerange)
+                                        else:
+                                            currentscene.render.fps = 30
+                #sets action to be the same as clip name in the stash
+                bpy.context.object.animation_data.action = bpy.data.actions[a.strips[0].name]
+                #makes a strip unmuted
+                a.strips[0].mute=False
+                bpy.context.scene.update() #update
+                filenametoexport = str(a.strips[0].name)                
+                filenametoexport = filenametoexport.replace(bpy.context.scene.name, bpy.context.scene.name + bpy.context.scene.AnimMiddleFix)
+                exportpathanim = bpy.context.scene.FbxExportPath + "\\" + filenametoexport + ".fbx"
+                bpy.ops.export_scene.fbx(filepath=exportpathanim, **export_fbx_anim_settings())
+                    #mute strip again so it dosent get exported with next strip
+                a.strips[0].mute=True
+                bpy.context.scene.update()  #update
+    #leave all strips set to mute
+    for a in obj.animation_data.nla_tracks:
+        a.strips[0].mute=True
+
+    currentscene.render.fps = 30
+    bpy.context.object.animation_data.action = currentaction
+    return()     
 
 #######################
 ###### OPERATORS ######
@@ -267,7 +447,7 @@ class MakeAnimLoop(bpy.types.Operator):
 
     def execute(self, context):
         i=0            
-        secondframe = 0
+        secondframe = 0             
 
         #set frame limits
         keys = action.frame_range
@@ -364,6 +544,35 @@ class ToggleXray(bpy.types.Operator):
             if obj.type == 'ARMATURE':
                 obj.show_x_ray = not obj.show_x_ray
         return{'FINISHED'}
+    
+class FbxExportMesh(bpy.types.Operator):
+    """Export mesh data only"""
+    bl_idname = "bone.fbxexportmesh"
+    bl_label = "Unused"
+
+    def execute(self, context): 
+        export_fbx_mesh()
+        return{'FINISHED'}
+
+class FbxExportAnim(bpy.types.Operator):
+
+    """Export only anims that are unmuted in the NLA editor"""
+    bl_idname = "bone.fbxexportanim"
+    bl_label = "Unused"
+
+    def execute(self, context):         
+        export_fbx_anim()
+        return{'FINISHED'}    
+
+class FbxExport(bpy.types.Operator):
+    """Export All"""
+    bl_idname = "bone.fbxexport"
+    bl_label = "Unused"
+
+    def execute(self, context): 
+        export_fbx()        
+        return{'FINISHED'}    
+    
 
 
 ################
@@ -379,18 +588,40 @@ class FrankiesAnimationTools(bpy.types.Panel):
     bl_category = "Rigging"
     bl_context = "posemode"  
     
-    def draw(self, context):
-        layout = self.layout        
+    bpy.types.Scene.FbxExportPath = bpy.props.StringProperty(name = "Path")
+    bpy.types.Scene.AnimMiddleFix = bpy.props.StringProperty(name = "Anim String")
     
+    def draw(self, context):
+        layout = self.layout
+
+        obj = context.object
+
         col = layout.column(align=True)
         col.label(text="Keyframes:")
         row = layout.row(align=True)
         
-        row.operator("bone.keyframeallactions", text="Keyframe all actions")
+        """        
+        row.prop(obj, "hide", text="hide obje")    
+        row.prop(obj, "hide_select", text="hide select")    
+        row.prop(context.object, "hide_render")
+        """
+                
+        row.label(text="Fbx Export:")
         row = layout.row(align=True)
-        row.operator("bone.removekeyframes", text="Remove all keyframes ")
+        row.prop(context.scene, "FbxExportPath")
         row = layout.row(align=True)
-        row.operator("bone.removekeyframesapartfromone", text="Remove all but one")
+        row.prop(context.scene, "name", text="Filename")
+        row = layout.row(align=True)
+        row.prop(context.scene, "AnimMiddleFix")
+        row = layout.row(align=True)
+        
+        row.operator("bone.fbxexportmesh", text="Export Mesh")    
+        row.operator("bone.fbxexportanim", text="Export Animations")    
+        row.operator("bone.fbxexport", text="Export All")    
+        
+        col.operator("bone.keyframeallactions", text="Keyframe all actions")
+        col.operator("bone.removekeyframes", text="Remove all keyframes ")
+        col.operator("bone.removekeyframesapartfromone", text="Remove all but one")
         
         col = layout.column(align=True)
         col.label(text="Actions and NLA:")
@@ -435,7 +666,6 @@ class FrankiesAnimationTools(bpy.types.Panel):
         row.operator("bone.togglexray", text="Toggle Xray")
         row = layout.row(align=True)
         row.operator("bone.toggleselectability", text="Toggle Selectability")
-         
 
 ######################
 ###### REGISTER ######
@@ -461,8 +691,10 @@ def register():
     bpy.utils.register_class(MakeAnimLoop)
     bpy.utils.register_class(ToggleSelectability)
     bpy.utils.register_class(ToggleXray)
+    bpy.utils.register_class(FbxExportMesh)
+    bpy.utils.register_class(FbxExportAnim)
+    bpy.utils.register_class(FbxExport)
     bpy.utils.register_class(FrankiesAnimationTools)
-
 
 def unregister():      
     
@@ -484,6 +716,9 @@ def unregister():
     bpy.utils.unregister_class(MakeAnimLoop)
     bpy.utils.unregister_class(ToggleSelectability)
     bpy.utils.unregister_class(ToggleXray)
+    bpy.utils.unregister_class(FbxExportMesh)
+    bpy.utils.unregister_class(FbxExportAnim)
+    bpy.utils.unregister_class(FbxExport)
     bpy.utils.unregister_class(FrankiesAnimationTools)
 
 if __name__ == "__main__":
