@@ -163,6 +163,45 @@ def export_fbx_anim_settings():
         "apply_unit_scale": False,
     }
 
+def export_fbx_anim_multiple_settings():
+    return {
+        # These options seem to produce the same result as the old Ascii exporter in Unity3D:
+        "version": 'BIN7400',
+        "axis_up": 'Y',
+        "axis_forward": '-Z',
+        #"global_matrix": Matrix.Rotation(-math.pi / 2.0, 4, 'X'),
+        # Should really be True, but it can cause problems if a model is already in a scene or prefab
+        # with the old transforms.
+        "bake_space_transform": False,
+
+        "use_selection": False,
+
+        "object_types": {'ARMATURE', 'EMPTY', 'MESH', 'OTHER'},
+        #"object_types": {'ARMATURE', 'EMPTY', 'OTHER'}, #note empty object is required in the scene or else unity breaks hierarchy by nurfing rig object and going straight to root
+        "use_mesh_modifiers": True,
+        "use_mesh_edges": False,
+        "mesh_smooth_type": 'FACE',
+        "use_tspace": False,  # XXX Why? Unity is expected to support tspace import...
+
+        "use_armature_deform_only": True,
+
+        "use_custom_props": True,
+
+        "bake_anim": True,
+        "bake_anim_simplify_factor": 1.0,
+        "bake_anim_step": 1.0,
+        "bake_anim_use_nla_strips": True,
+        "bake_anim_use_all_actions": False,
+        "add_leaf_bones": False,  # Avoid memory/performance cost for something only useful for modelling
+        "primary_bone_axis": 'Y',  # Doesn't really matter for Unity, so leave unchanged
+        "secondary_bone_axis": 'X',
+
+        "path_mode": 'AUTO',
+        "embed_textures": False,
+        "batch_mode": 'OFF',
+        "apply_unit_scale": False,
+    }    
+
 def export_fbx():
     exportpath = bpy.context.scene.FbxExportPath + bpy.context.scene.name +".fbx"
     bpy.ops.export_scene.fbx(filepath=exportpath, **export_fbx_settings())
@@ -240,6 +279,37 @@ def export_fbx_anim():
     bpy.context.object.animation_data.action = currentaction
     return()
 
+def export_fbx_anim_multiple():
+    obj = bpy.context.object                    #active object
+    scn = bpy.context.scene                     #current scene
+
+    currentaction = bpy.context.object.animation_data.action
+    currentscene = bpy.context.scene
+
+    exportpath = bpy.context.scene.FbxExportPath + bpy.context.scene.name +  bpy.context.scene.AnimMiddleFix + ".fbx"
+
+    #sets correct mute and unmuting
+
+    for nlatrack in bpy.context.object.animation_data.nla_tracks:
+            bpy.context.object.animation_data.nla_tracks.remove(nlatrack)
+            
+    for action in bpy.data.actions:
+        if action.Export == True:
+            print(action)
+            bpy.context.object.animation_data.nla_tracks.new()
+            bpy.context.object.animation_data.nla_tracks[(len(bpy.context.object.animation_data.nla_tracks)-1)].name = action.name
+            bpy.context.object.animation_data.nla_tracks[(len(bpy.context.object.animation_data.nla_tracks)-1)].strips.new(action.name,0,action)
+            bpy.context.object.animation_data.nla_tracks[(len(bpy.context.object.animation_data.nla_tracks)-1)].mute = not action.Export
+            
+            bpy.context.scene.update() #update            
+            
+    bpy.ops.export_scene.fbx(filepath=exportpath, **export_fbx_anim_multiple_settings())
+        #mute strip again so it dosent get exported with next strip
+    bpy.context.scene.update()  #update
+               
+    bpy.context.object.animation_data.action = currentaction
+    return()       
+    
 def export_fbx_anim_old():
     obj = bpy.context.object                    #active object
     scn = bpy.context.scene                     #current scene
@@ -304,36 +374,35 @@ class KeyFrameAllActions(bpy.types.Operator):
     bl_label = "Unused"
     
     def execute(self, context):
-        action = bpy.data.actions
-        selectedBoneList = []
-              
-        if bpy.context.scene.SelBoneOnly == False:
-            for a in bpy.data.armatures[0].bones:
-                selectedBoneList.append([a,a.select])
-                a.select = True
-                
-        if bpy.context.selected_pose_bones.count != 0:
-            for selbone in bpy.context.selected_pose_bones:
-                for a in action:
-                    print ("--------")
-                    booltest = False
-                    print ("Action = "+a.name)
-                    for f in bpy.data.actions[a.name].fcurves:
-                        b = (str(f.data_path))
-                        if ("\""+"_Position"+"\"") in b:
-                            if ("\""+"Copy Location"+"\"") in b:
-                                print ("found it, moving on to next animation", b)
-                                booltest = True
-                    if booltest == False:
-                        print ("Didnt find it, adding")
-                        kfp = a.fcurves.new('pose.bones["_Position"].constraints["Copy Location"].influence')
-                        kfp.keyframe_points.add(1)
-                        kfp.keyframe_points[0].co = 0.0, 0.0
-                        booltest = True
-                        
-        if bpy.context.scene.SelBoneOnly == False:
-            for i in selectedBoneList:
-                i[0].select = i[1]                        
+        action = bpy.context.object.animation_data.action   #current action  
+        actions = bpy.data.actions
+
+        print ("--------")
+        for selbone in bpy.context.selected_pose_bones:
+            print ("for bone,", selbone.name)   
+            sbn = str("\""+selbone.name+"\"")   
+
+            for f in bpy.data.actions[action.name].fcurves:
+                fstr = (str(f.data_path))
+                if sbn in fstr:
+                    findex = f.data_path
+                    if "constraint" in findex:
+                        print(findex)
+                        for a in actions:
+                            print ("--------")
+                            booltest = False
+                            print ("Action = "+a.name)
+                            for f in bpy.data.actions[a.name].fcurves: 
+                                b = (str(f.data_path))
+                                if findex in  b:
+                                    print (b, " found, moving on to next animation")
+                                    booltest = True 
+                            if booltest == False:
+                                print ("Didnt find it, adding")
+                                kfp = a.fcurves.new(findex)
+                                kfp.keyframe_points.add(1)
+                                kfp.keyframe_points[0].co = 0.0, 0.0
+                                booltest = True                      
         return{'FINISHED'}
 
 class RemoveKeyFrames(bpy.types.Operator):
@@ -486,6 +555,8 @@ class CleanAnimData(bpy.types.Operator):
             if object.type != 'ARMATURE':
                 if object.animation_data != None:
                     object.animation_data.action = None
+        for nlatrack in bpy.context.object.animation_data.nla_tracks:
+            bpy.context.object.animation_data.nla_tracks.remove(nlatrack)
         return{'FINISHED'}
 
 class SmartKeyframeFix(bpy.types.Operator):
@@ -682,6 +753,18 @@ class FbxExportMesh(bpy.types.Operator):
         export_fbx_mesh()
         return{'FINISHED'}
 
+export_fbx_anim_multiple        
+
+class FbxExportAnimMultiple(bpy.types.Operator):
+
+    """Export only anims that are unmuted in the NLA editor to one fbx"""
+    bl_idname = "bone.fbxexportanimmultiple"
+    bl_label = "Unused"
+
+    def execute(self, context):
+        export_fbx_anim_multiple()
+        return{'FINISHED'}
+        
 class FbxExportAnim(bpy.types.Operator):
 
     """Export only anims that are unmuted in the NLA editor"""
@@ -781,7 +864,9 @@ class FrankiesAnimationTools(bpy.types.Panel):
 
     bpy.types.Scene.FbxExportPath = bpy.props.StringProperty(name = "Path")
     bpy.types.Scene.AnimMiddleFix = bpy.props.StringProperty(name = "Anim String")
+    bpy.types.Scene.LastAnimSelected = bpy.props.StringProperty(name = "Last Anim Selected")
     bpy.types.Action.Export = bpy.props.BoolProperty(name= "Export")
+    
     bpy.types.Scene.SelBoneOnly = bpy.props.BoolProperty(name= "Selected Bone Only")
 
     def draw(self, context):
@@ -803,9 +888,14 @@ class FrankiesAnimationTools(bpy.types.Panel):
 
         row.operator("bone.fbxexportmesh", text="Export Mesh")
         row.operator("bone.fbxexportanim", text="Export Animations")
+        row = layout.row(align=True)       
+        row.operator("bone.fbxexportanimmultiple", text="Export Animations Single Fbx")
         row.operator("bone.fbxexport", text="Export All")
 
-        layout.template_list("FActionList", "", bpy.data, "actions", obj, "action_list_index", rows=2)
+        layout.template_list("FActionList", "", bpy.data, "actions", obj, "action_list_index", rows=2)        
+        if bpy.types.Scene.LastAnimSelected != bpy.data.actions[bpy.context.object.action_list_index]:
+            bpy.context.object.animation_data.action = bpy.data.actions[bpy.context.object.action_list_index]
+        bpy.types.Scene.LastAnimSelected = bpy.data.actions[bpy.context.object.action_list_index] #lets you selected with the action dropdown from action editor
         row = layout.row(align=True)
         row.operator("bone.toggleactionexport", text="Toggle")
         
@@ -943,6 +1033,7 @@ def register():
     bpy.utils.register_class(ToggleXray)
     bpy.utils.register_class(FbxExportMesh)
     bpy.utils.register_class(FbxExportAnim)
+    bpy.utils.register_class(FbxExportAnimMultiple)
     bpy.utils.register_class(FbxExport)
     bpy.utils.register_class(FActionList)
     bpy.utils.register_class(ToggleActionExport)
@@ -973,6 +1064,7 @@ def unregister():
     bpy.utils.unregister_class(ToggleXray)
     bpy.utils.unregister_class(FbxExportMesh)
     bpy.utils.unregister_class(FbxExportAnim)
+    bpy.utils.unregister_class(FbxExportAnimMultiple)
     bpy.utils.unregister_class(FbxExport)
     bpy.utils.unregister_class(FActionList)
     bpy.utils.unregister_class(ToggleActionExport)    
