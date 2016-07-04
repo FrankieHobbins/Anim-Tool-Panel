@@ -374,6 +374,60 @@ class KeyFrameAllActions(bpy.types.Operator):
     bl_label = "Unused"
     
     def execute(self, context):
+    
+        obj = bpy.context.object             #active object
+        action = obj.animation_data.action   #current action  
+        print ("--start--")
+
+        for selbone in bpy.context.selected_pose_bones:
+            print ("for bone,", selbone.name)
+            sb = str(selbone)
+            sbn = str("\""+selbone.name+"\"")
+            i=0   
+            fcurvepath=[]
+            fcurvepathindex=[]  
+            kfpvalue=[]
+            fcgroup=[]
+                                 
+            #create a list of f curve indexs the selected bone uses, bones must allready have keys for this to work
+            for f in bpy.data.actions[action.name].fcurves:
+                fstr = (str(f.data_path))
+                if sbn in fstr:                                 #this creates an array with all the info to copy to new actions           
+                    fcurvepath.append(f.data_path)              #save fcurve name
+                    fcurvepathindex.append(f.array_index)       #save fcurve index
+                    kfpvalue.append(f.keyframe_points[0].co)    #save fcurve data values                       
+                    if f.group == None:                         #if no group make a new one
+                        fcgroup.append("controllers")           #save fcurve group, madeup name
+                    else:
+                        fcgroup.append(f.group.name)            #save fcurve group, real name
+
+            #go though all actions check to see if fcurve data exists if not make new curves from above data
+            for a in bpy.data.actions:
+                booltest = False
+                i=0       
+                for f in bpy.data.actions[a.name].fcurves: 
+                    b = (str(f.data_path))                    
+                    if sbn in b and booltest == False:
+                        print (a.name, " allready has fcruve data for", selbone.name,"skipping")
+                        booltest = True                 #this only checks for one instance of the fcurve, could return false positives if only one chanel had a keyframe
+                
+                if booltest == False:
+                    print (a.name, " has no data for", selbone.name,"adding")            
+                    for fcp in fcurvepath:
+                        kfp = a.fcurves.new(fcp, fcurvepathindex[i],fcgroup[i])     
+                        kfp.keyframe_points.add(1)
+                        kfp.keyframe_points[0].co = kfpvalue[i]                                             
+                        i += 1    
+      
+        return{'FINISHED'}
+        
+        
+class KeyFrameAllActionsConstraints(bpy.types.Operator):
+    """Propogate first keyframe from this action to all other actions if that action is missing a keyframe, handy for when you add a new bone and now need a keyframe for it on all other actions """
+    bl_idname = "bone.keyframeallactionsconstraints"
+    bl_label = "Unused"
+    
+    def execute(self, context):
         action = bpy.context.object.animation_data.action   #current action  
         actions = bpy.data.actions
 
@@ -403,7 +457,7 @@ class KeyFrameAllActions(bpy.types.Operator):
                                 kfp.keyframe_points.add(1)
                                 kfp.keyframe_points[0].co = 0.0, 0.0
                                 booltest = True                      
-        return{'FINISHED'}
+        return{'FINISHED'}        
 
 class RemoveKeyFrames(bpy.types.Operator):
     """ Remove selected bone keyframes from all actions """
@@ -418,7 +472,6 @@ class RemoveKeyFrames(bpy.types.Operator):
                 selectedBoneList.append([a,a.select])
                 a.select = True
                 
-    
         for selbone in bpy.context.selected_pose_bones:
             bone_path = '"' + selbone.name + '"'
             #for fc in action.fcurves:
@@ -433,6 +486,24 @@ class RemoveKeyFrames(bpy.types.Operator):
         if bpy.context.scene.SelBoneOnly == False:
             for i in selectedBoneList:
                 i[0].select = i[1]         
+        
+        #now go though and remove emtpy groups
+        action = bpy.context.object.animation_data.action   #current action  
+        actions = bpy.data.actions
+       
+        for selbone in bpy.context.selected_pose_bones:
+            print ("for bone,", selbone.name)   
+            sbn = str("\""+selbone.name+"\"")   
+
+            for f in bpy.data.actions[action.name].fcurves:
+                fstr = (str(f.data_path))
+                if sbn in fstr:
+                    findex = f.data_path
+                    for a in actions:
+                        booltest = False
+                        for f in a.fcurves:
+                            if len(f.keyframe_points) == 0:
+                                a.fcurves.remove(f)
         return{'FINISHED'}
 
 class RemoveKeyFramesApartFromOne(bpy.types.Operator):
@@ -589,6 +660,8 @@ class KeyframeLastToFirst(bpy.types.Operator):
     bl_label = "Unused"
 
     def execute(self, context):
+        action = bpy.context.object.animation_data.action   #current action  
+        
         if bpy.context.selected_pose_bones != None:
             if bpy.context.selected_pose_bones.count != 0:
                 for selbone in bpy.context.selected_pose_bones:
@@ -605,8 +678,12 @@ class KeyframeFirstToLast(bpy.types.Operator):
     """Duplicate first keyframe and move to the last """
     bl_idname = "bone.keyframefirsttolast"
     bl_label = "Unused"
+    
+
 
     def execute(self, context):
+        action = bpy.context.object.animation_data.action   #current action  
+        
         if bpy.context.selected_pose_bones != None:
             if bpy.context.selected_pose_bones.count != 0:
                 for selbone in bpy.context.selected_pose_bones:
@@ -903,7 +980,7 @@ class FrankiesAnimationTools(bpy.types.Panel):
         row = layout.row(align=True)
         col.label(text="Keyframes:")
         col.operator("bone.keyframeallactions", text="Add missing first keyframe to other actions")
-        #col.operator("bone.keyframeallactions", text="!!Override first keyframe on other actions")
+        col.operator("bone.keyframeallactionsconstraints", text="Add missing constraints first keyframe to other actions")
         col.operator("bone.removekeyframes", text="Remove keyframes on filtered actions")
         col.operator("bone.removekeyframesapartfromone", text="Remove all but first keyframe on filtered actions")
         
@@ -1014,6 +1091,7 @@ def register():
     bpy.types.Object.action_list_index = bpy.props.IntProperty()
     bpy.utils.register_class(FrankiesExportPopupMenu)
     bpy.utils.register_class(KeyFrameAllActions)
+    bpy.utils.register_class(KeyFrameAllActionsConstraints)
     bpy.utils.register_class(RemoveKeyFrames)
     bpy.utils.register_class(RemoveKeyFramesApartFromOne)
     bpy.utils.register_class(ActionstOnNlaStrips)
@@ -1045,6 +1123,7 @@ def unregister():
 
     bpy.utils.unregister_class(FrankiesExportPopupMenu)
     bpy.utils.unregister_class(KeyFrameAllActions)
+    bpy.utils.unregister_class(KeyFrameAllActionsConstraints)
     bpy.utils.unregister_class(RemoveKeyFrames)
     bpy.utils.unregister_class(RemoveKeyFramesApartFromOne)
     bpy.utils.unregister_class(ActionstOnNlaStrips)
