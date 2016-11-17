@@ -26,6 +26,7 @@ bl_info = {
     }
 
 import bpy
+import random
 from bpy.props import *
 
 ########################
@@ -367,6 +368,182 @@ def export_fbx_anim_old():
 #######################
 ###### OPERATORS ######
 #######################
+
+class AutoMergeGroups(bpy.types.Operator):
+    """Propogate first keyframe from this action to all other actions if that action is missing a keyframe, handy for when you add a new bone and now need a keyframe for it on all other actions """
+    bl_idname = "bone.automergegroups"
+    bl_label = "Unused"
+    
+    def execute(self, context):
+        print ("-----------------------------")
+        scn = bpy.context.scene
+        doExecute = True
+
+        #check all groups have corresponding objects
+        for group in bpy.data.groups:
+            match = False
+            for object in bpy.data.objects:
+                if group.name == object.name:
+                    print ("groups " + group.name)
+                    match = True
+            if match == False:
+                doExecute = False
+                print ("-----ERROR : group " + group.name + " without object named after it-----")
+
+        #clear for operations
+        if doExecute:
+            for group in bpy.data.groups:
+                #make a list of all objects in group
+                print ("starting " + group.name)        
+                objInGroup = []
+                for obj in group.objects:
+                    objInGroup.append(obj)
+                
+                #find object corresponding to group (object to replace has to be named the same as group)    
+                for obj in bpy.data.objects:
+                    if obj.name == group.name:
+                        print("found object for "+ obj.name)
+                        oldObj = obj
+                        oldObjmatrix = obj.matrix_world
+                        objName = obj.name
+                    
+                #go though list of objects and..
+                objInGroupNew = []
+                for obj in objInGroup:
+                    print (obj.name) 
+                    if obj.name != objName:                
+                        objData = obj.data.copy()         #get data from object
+
+                        ob = bpy.data.objects.new("MergeMe", objData)   #add that data to a new object
+                        ob.location = obj.location                      #in the same place as the old one        
+
+                        scn.objects.link(ob)        #add to scene
+                        objInGroupNew.append(ob)    #add to list of NEW objects
+                        scn.update()        
+
+                #rename old object ready for delete
+                oldObj.name = "DELETEME"
+
+                # select all new objects
+                for obj in bpy.data.objects:
+                    for objG in objInGroupNew:
+                        if obj.name in objG.name:
+                            obj.select = True 
+                            break
+                        obj.select = False
+                            
+                #make a new object to merge all new objects into, add to scene and set transform based on old one
+                me = bpy.data.meshes.new(group.name)
+                ob = bpy.data.objects.new(group.name, me)
+                scn.objects.link(ob)
+                ob.matrix_world = oldObjmatrix
+
+                #select this new object
+                ob.select = True
+                bpy.context.scene.objects.active = ob  #has to be active so join works
+                
+                #merge all new objects into one
+                bpy.ops.object.join()
+                
+                #copy layer info and modifiers from old models to new one
+                ob.layers = oldObj.layers
+                oldObj.select = True
+                bpy.context.scene.objects.active = oldObj
+                bpy.ops.object.make_links_data(type="MODIFIERS")        
+                
+                #remove old object
+                scn.objects.unlink(oldObj)
+                oldObj.user_clear()        
+                scn.update()
+
+                print("finished " + group.name)
+        return{'FINISHED'}
+
+
+class NameByHeight(bpy.types.Operator):
+    """Name objects based on height"""
+    bl_idname = "bone.namebyheight"
+    bl_label = "Unused"
+    
+    def execute(self, context):
+
+        selobjects = bpy.context.selected_objects
+        activeobject = bpy.context.active_object
+        ypos = -10
+        objectsYarray = []
+        name = "VertexColourAssignment.000"
+        activeobject.name = name
+
+        for object in selobjects:
+            object.name = "temp"
+
+        for object in selobjects:
+            #reset the array
+            objectsYarray = []       
+            #find objects higher than active object
+            for object in selobjects:
+                if object.matrix_world[2][3] > ypos:
+                    objectsYarray.append(object)
+
+                #in objects that are higher, find lowest
+                higherYobjectsMinPos = 100000        
+                for higherYobjects in objectsYarray:
+                    if higherYobjects.matrix_world[2][3] < higherYobjectsMinPos:
+                        higherYobjectsMinPos = higherYobjects.matrix_world[2][3]             
+                        
+            #loop though objects again, if object y pos = it must be the next highest so rename it
+            for object in selobjects:
+                if object.matrix_world[2][3] == higherYobjectsMinPos:
+                    #print("lowest object is", object.name ," at ", higherYobjectsMinPos)
+                    object.name = name
+                    ypos = higherYobjectsMinPos                    
+
+        return{'FINISHED'}
+
+class VertexValueByName(bpy.types.Operator):
+    """ Take last 3 didgets of the object name and set them to be the vertex colour for the object, eg verts in the object name.023 gets the vertex value 023, 023, 023 """
+    bl_idname = "bone.vertexvaluebyname"
+    bl_label = "Unused"
+    
+    def execute(self, context):
+         
+        # start in object mode
+        obj = bpy.context.selected_objects
+
+        for o in obj:
+            mesh = o.data
+            
+            if not mesh.vertex_colors:
+                mesh.vertex_colors.new()
+
+            """
+            let us assume for sake of brevity that there is now 
+            a vertex color map called  'Col'    
+            """
+
+            color_layer = mesh.vertex_colors["Col"]
+
+            # or you could avoid using the color_layer name
+            # color_layer = mesh.vertex_colors.active  
+            i = 0
+
+            value = o.name[-3:]
+            value = float(value)
+            value = value / 255
+            print (value)            
+
+            rgb = [value,value,value]
+
+            for poly in mesh.polygons:
+                for idx in poly.loop_indices:            
+                    color_layer.data[i].color = rgb
+                    i += 1
+
+            # set to vertex paint mode to see the result
+            # bpy.ops.object.mode_set(mode='VERTEX_PAINT')
+
+        return{'FINISHED'}
+
 
 class KeyFrameAllActions(bpy.types.Operator):
     """Propogate first keyframe from this action to all other actions if that action is missing a keyframe, handy for when you add a new bone and now need a keyframe for it on all other actions """
@@ -975,7 +1152,7 @@ class FrankiesAnimationTools(bpy.types.Panel):
         bpy.types.Scene.LastAnimSelected = bpy.data.actions[bpy.context.object.action_list_index] #lets you selected with the action dropdown from action editor
         row = layout.row(align=True)
         row.operator("bone.toggleactionexport", text="Toggle")
-        
+
         col = layout.column(align=True)
         row = layout.row(align=True)
         col.label(text="Keyframes:")
@@ -1076,6 +1253,19 @@ class FrankiesAnimationToolsObject(bpy.types.Panel):
         layout.template_list("FActionList", "", bpy.data, "actions", obj, "action_list_index", rows=2)
         row = layout.row(align=True)
         row.operator("bone.toggleactionexport", text="Toggle")
+        row = layout.row(align=True)
+        
+        col = layout.column(align=True)
+        col.label(text="Vertex Colours:")
+
+        row = layout.row(align=True)
+        row.operator("bone.namebyheight", text="Name Objects By Height")
+        row = layout.row(align=True)
+        row.operator("bone.vertexvaluebyname", text="Vertex Colour Objects By Height")
+        row = layout.row(align=True)
+        row.operator("bone.automergegroups", text="AutoMerge Groups to Objects")
+        row = layout.row(align=True)
+
 
 
 #def draw_item(self, context):
@@ -1117,6 +1307,9 @@ def register():
     bpy.utils.register_class(ToggleActionExport)
     bpy.utils.register_class(FrankiesAnimationToolsObject)
     bpy.utils.register_class(FrankiesAnimationTools)
+    bpy.utils.register_class(NameByHeight)
+    bpy.utils.register_class(VertexValueByName)
+    bpy.utils.register_class(AutoMergeGroups)
     
 
 def unregister():
@@ -1149,6 +1342,9 @@ def unregister():
     bpy.utils.unregister_class(ToggleActionExport)    
     bpy.utils.unregister_class(FrankiesAnimationToolsObject)
     bpy.utils.unregister_class(FrankiesAnimationTools)
+    bpy.utils.unregister_class(NameByHeight)
+    bpy.utils.unregister_class(VertexValueByName)
+    bpy.utils.unregister_class(AutoMergeGroups)
     del bpy.types.Object.action_list_index
 
 if __name__ == "__main__":
