@@ -470,13 +470,16 @@ class NameByHeight(bpy.types.Operator):
         selobjects = bpy.context.selected_objects
         activeobject = bpy.context.active_object
         ypos = -10
+        number = 000
         objectsYarray = []
-        name = "VertexColourAssignment.000"
-        activeobject.name = name
-
+        name = activeobject.name
+        
+        if name[-3:].isdigit():
+            name = name[:-4]
+        
         for object in selobjects:
             object.name = "temp"
-
+        
         for object in selobjects:
             #reset the array
             objectsYarray = []       
@@ -484,18 +487,27 @@ class NameByHeight(bpy.types.Operator):
             for object in selobjects:
                 if object.matrix_world[2][3] > ypos:
                     objectsYarray.append(object)
-
+                
                 #in objects that are higher, find lowest
                 higherYobjectsMinPos = 100000        
                 for higherYobjects in objectsYarray:
                     if higherYobjects.matrix_world[2][3] < higherYobjectsMinPos:
-                        higherYobjectsMinPos = higherYobjects.matrix_world[2][3]             
-                        
+                        higherYobjectsMinPos = higherYobjects.matrix_world[2][3]
+                
             #loop though objects again, if object y pos = it must be the next highest so rename it
             for object in selobjects:
                 if object.matrix_world[2][3] == higherYobjectsMinPos:
-                    #print("lowest object is", object.name ," at ", higherYobjectsMinPos)
-                    object.name = name
+                    # print("lowest object is", object.name ," at ", higherYobjectsMinPos)
+                    # this bit is because the naming convention needs to be 3 digits but that data isnt stored anywhere
+                    if len(str(number)) == 1:
+                        stringnumber = "00"+str(number)
+                    if len(str(number)) == 2:
+                        stringnumber = "0"+str(number)
+                    if len(str(number)) == 3:
+                        stringnumber = str(number)
+                    
+                    object.name = name + "." + stringnumber
+                    number += 1
                     ypos = higherYobjectsMinPos                    
 
         return{'FINISHED'}
