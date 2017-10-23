@@ -85,6 +85,7 @@ def export_fbx_settings():
         "embed_textures": False,
         "batch_mode": 'OFF',
         "apply_unit_scale": False,
+        "apply_scale_options" : 'FBX_SCALE_ALL',
     }
 
 def export_fbx_mesh_settings():
@@ -123,6 +124,7 @@ def export_fbx_mesh_settings():
         "embed_textures": False,
         "batch_mode": 'OFF',
         "apply_unit_scale": False,
+        "apply_scale_options" : 'FBX_SCALE_ALL',
     }
 
 def export_fbx_anim_settings():
@@ -162,6 +164,7 @@ def export_fbx_anim_settings():
         "embed_textures": False,
         "batch_mode": 'OFF',
         "apply_unit_scale": False,
+        "apply_scale_options" : 'FBX_SCALE_ALL',
     }
 
 def export_fbx_anim_multiple_settings():
@@ -201,6 +204,7 @@ def export_fbx_anim_multiple_settings():
         "embed_textures": False,
         "batch_mode": 'OFF',
         "apply_unit_scale": False,
+        "apply_scale_options" : 'FBX_SCALE_ALL',
     }    
 
 def export_fbx():
@@ -257,9 +261,10 @@ def export_fbx_anim():
                                         framerange = fcurve.keyframe_points[len(fcurve.keyframe_points)-1].co[0] - fcurve.keyframe_points[0].co[0]#-1
                                         distance = fcurve.keyframe_points[len(fcurve.keyframe_points)-1].co[1] - fcurve.keyframe_points[0].co[1]
                                         if distance > 0:
-                                            #print ("fps =",(2/distance) * framerange)
+                                            print ("fps =",(2/distance) * framerange)
                                             currentscene.render.fps = int((2/distance)*framerange)
                                         else:
+                                            print ("no speed data found, fps 30")
                                             currentscene.render.fps = 30
                 #sets action to be the same as clip name in the stash
                 bpy.context.object.animation_data.action = bpy.data.actions[a.strips[0].name]
@@ -370,93 +375,88 @@ def export_fbx_anim_old():
 #######################
 
 class AutoMergeGroups(bpy.types.Operator):
-    """Propogate first keyframe from this action to all other actions if that action is missing a keyframe, handy for when you add a new bone and now need a keyframe for it on all other actions """
+    """Replaces mesh of object name X with all objects in group name X"""
     bl_idname = "bone.automergegroups"
     bl_label = "Unused"
     
     def execute(self, context):
         print ("-----------------------------")
         scn = bpy.context.scene
+        selobj = bpy.context.selected_objects
         doExecute = True
+        groups = []
 
-        #check all groups have corresponding objects
-        for group in bpy.data.groups:
-            match = False
-            for object in bpy.data.objects:
-                if group.name == object.name:
-                    print ("groups " + group.name)
-                    match = True
-            if match == False:
-                doExecute = False
-                print ("-----ERROR : group " + group.name + " without object named after it-----")
-
-        #clear for operations
-        if doExecute:
-            for group in bpy.data.groups:
-                #make a list of all objects in group
-                print ("starting " + group.name)        
-                objInGroup = []
-                for obj in group.objects:
-                    objInGroup.append(obj)
-                
-                #find object corresponding to group (object to replace has to be named the same as group)    
-                for obj in bpy.data.objects:
-                    if obj.name == group.name:
-                        print("found object for "+ obj.name)
-                        oldObj = obj
-                        oldObjmatrix = obj.matrix_world
-                        objName = obj.name
+        #check seleted objects have groups
+        for group in bpy.data.groups:            
+            for o in selobj:
+                if group.name == o.name:
+                    #make a list of all objects in group
+                    print ("starting " + group.name)        
+                    objInGroup = []
+                    for obj in group.objects:
+                        objInGroup.append(obj)
                     
-                #go though list of objects and..
-                objInGroupNew = []
-                for obj in objInGroup:
-                    print (obj.name) 
-                    if obj.name != objName:                
-                        objData = obj.data.copy()         #get data from object
+                    #find object corresponding to group (object to replace has to be named the same as group)    
+                    for obj in bpy.data.objects:
+                        if obj.name == group.name:
+                            print("found object for "+ obj.name)
+                            oldObj = obj
+                            oldObjmatrix = obj.matrix_world
+                            objName = obj.name
+                        
+                    #go though list of objects and..
+                    objInGroupNew = []
+                    for obj in objInGroup:
+                        print (obj.name) 
+                        if obj.name != objName:                
+                            objData = obj.data.copy()         #get data from object
 
-                        ob = bpy.data.objects.new("MergeMe", objData)   #add that data to a new object
-                        ob.location = obj.location                      #in the same place as the old one        
+                            ob = bpy.data.objects.new("MergeMe", objData)   #add that data to a new object
+                            ob.matrix_world = obj.matrix_world                      #in the same place as the old one                                    
 
-                        scn.objects.link(ob)        #add to scene
-                        objInGroupNew.append(ob)    #add to list of NEW objects
-                        scn.update()        
+                            scn.objects.link(ob)        #add to scene
+                            objInGroupNew.append(ob)    #add to list of NEW objects
+                            scn.update()        
 
-                #rename old object ready for delete
-                oldObj.name = "DELETEME"
+                    #rename old object ready for delete
+                    oldObj.name = "DELETEME"
 
-                # select all new objects
-                for obj in bpy.data.objects:
-                    for objG in objInGroupNew:
-                        if obj.name in objG.name:
-                            obj.select = True 
-                            break
-                        obj.select = False
-                            
-                #make a new object to merge all new objects into, add to scene and set transform based on old one
-                me = bpy.data.meshes.new(group.name)
-                ob = bpy.data.objects.new(group.name, me)
-                scn.objects.link(ob)
-                ob.matrix_world = oldObjmatrix
+                    # select all new objects
+                    for obj in bpy.data.objects:
+                        for objG in objInGroupNew:
+                            if obj.name in objG.name:
+                                obj.select = True 
+                                break
+                            obj.select = False
 
-                #select this new object
-                ob.select = True
-                bpy.context.scene.objects.active = ob  #has to be active so join works
-                
-                #merge all new objects into one
-                bpy.ops.object.join()
-                
-                #copy layer info and modifiers from old models to new one
-                ob.layers = oldObj.layers
-                oldObj.select = True
-                bpy.context.scene.objects.active = oldObj
-                bpy.ops.object.make_links_data(type="MODIFIERS")        
-                
-                #remove old object
-                scn.objects.unlink(oldObj)
-                oldObj.user_clear()        
-                scn.update()
+                    #apply scale and transform info
+                    bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+                                
+                    #make a new object to merge all new objects into, add to scene and set transform based on old one
+                    me = bpy.data.meshes.new(group.name)
+                    ob = bpy.data.objects.new(group.name, me)
+                    scn.objects.link(ob)
+                    ob.matrix_world = oldObjmatrix
 
-                print("finished " + group.name)
+                    #select this new object
+                    ob.select = True
+                    bpy.context.scene.objects.active = ob  #has to be active so join works
+                    
+                    #merge all new objects into one
+                    bpy.ops.object.join()
+                    
+                    #copy layer info and modifiers from old models to new one
+                    ob.layers = oldObj.layers
+                    oldObj.select = True
+                    bpy.context.scene.objects.active = oldObj
+                    bpy.ops.object.make_links_data(type="MODIFIERS")        
+                    
+                    #remove old object
+                    scn.objects.unlink(oldObj)
+                    oldObj.user_clear()        
+                    scn.update()
+
+                    print("finished " + group.name)
         return{'FINISHED'}
 
 
@@ -470,7 +470,7 @@ class NameByHeight(bpy.types.Operator):
         selobjects = bpy.context.selected_objects
         activeobject = bpy.context.active_object
         ypos = -10
-        number = 000
+        number = 1
         objectsYarray = []
         name = activeobject.name
         
@@ -1158,9 +1158,13 @@ class FrankiesAnimationTools(bpy.types.Panel):
         row.operator("bone.fbxexportanimmultiple", text="Export Animations Single Fbx")
         row.operator("bone.fbxexport", text="Export All")
 
-        layout.template_list("FActionList", "", bpy.data, "actions", obj, "action_list_index", rows=2)        
+        layout.template_list("FActionList", "", bpy.data, "actions", obj, "action_list_index", rows=2)
         if bpy.types.Scene.LastAnimSelected != bpy.data.actions[bpy.context.object.action_list_index]:
             bpy.context.object.animation_data.action = bpy.data.actions[bpy.context.object.action_list_index]
+            currentaction = bpy.context.object.animation_data.action
+            keys = currentaction.frame_range
+            lastkey=(keys[-1])
+            bpy.context.scene.frame_end = lastkey            
         bpy.types.Scene.LastAnimSelected = bpy.data.actions[bpy.context.object.action_list_index] #lets you selected with the action dropdown from action editor
         row = layout.row(align=True)
         row.operator("bone.toggleactionexport", text="Toggle")
