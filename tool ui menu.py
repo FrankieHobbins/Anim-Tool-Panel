@@ -449,13 +449,13 @@ class AutoMergeGroups(bpy.types.Operator):
                                 bpy.context.scene.objects.active = obj
                                 break
                             obj.select = False
+                            
+                    #apply modifiers(have been copied)
+                    bpy.ops.object.convert(target='MESH')
 
                     #apply scale and transform info
                     bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
-                    
-                    #apply modifiers(have been copied)
-                    bpy.ops.object.convert(target='MESH')
-                                
+                                                
                     #make a new object to merge all new objects into, add to scene and set transform based on old one
                     me = bpy.data.meshes.new(group.name)
                     ob = bpy.data.objects.new(group.name, me)
