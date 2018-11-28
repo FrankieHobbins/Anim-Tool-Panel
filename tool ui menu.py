@@ -277,9 +277,7 @@ def export_fbx_anim():
                 bpy.ops.export_scene.fbx(filepath=exportpathanim, **export_fbx_anim_settings())
                     #mute strip again so it dosent get exported with next strip
                 a.strips[0].mute=True
-                bpy.context.scene.update()  #update
-              
-
+                bpy.context.scene.update()  #update  
 
     currentscene.render.fps = 30
     bpy.context.object.animation_data.action = currentaction
@@ -386,8 +384,195 @@ def copyModifier(source, target):
         # copy those properties
         for prop in properties:
             setattr(mDst, prop, getattr(mSrc, prop))
+            
+def vertexColor():
+    # start in object mode
+    obj = bpy.context.selected_objects
 
+    for o in obj:
+        mesh = o.data
+        
+        if not mesh.vertex_colors:
+            mesh.vertex_colors.new()
+
+        """
+        let us assume for sake of brevity that there is now 
+        a vertex color map called  'Col'    
+        """
+
+        color_layer = mesh.vertex_colors["Col"]
+
+        # or you could avoid using the color_layer name
+        # color_layer = mesh.vertex_colors.active  
+        i = 0
+
+        value = o.name[-3:]
+        value = float(value)
+        value = value / 255
+        print (value)            
+
+        rgb = [value,value,value]
+
+        for poly in mesh.polygons:
+            for idx in poly.loop_indices:
+                color_layer.data[i].color = rgb
+                i += 1
+
+        # set to vertex paint mode to see the result
+        # bpy.ops.object.mode_set(mode='VERTEX_PAINT')
+
+def mergeGroups(dovc):
+    print ("-----------------------------")
+    scn = bpy.context.scene
+    selobj = bpy.context.selected_objects
+    doExecute = True
+    groups = []
+
+    #check seleted objects have groups
+    for group in bpy.data.groups:
+        for o in selobj:
+            if group.name == o.name:
+                #make a list of all objects in group
+                print ("starting " + group.name)
+                objInGroup = []
+                for obj in group.objects:
+                    if obj.type == "MESH":
+                        objInGroup.append(obj)
+
+                #find object corresponding to group (object to replace has to be named the same as group)
+                for obj in bpy.data.objects:
+                    if obj.name == group.name:
+                        print("found object for "+ obj.name)
+                        oldObj = obj
+                        oldObjmatrix = obj.matrix_world
+                        objName = obj.name
+                    
+                #go though list of objects and..
+                objInGroupNew = []
+                for obj in objInGroup:
+                    print (obj.name) 
+                    if obj.name != objName:
+                        objData = obj.data.copy()         #get data from object
+
+                        ob = bpy.data.objects.new("MergeMe"+ obj.name[-4:], objData)   #add that data to a new object
+                        ob.matrix_world = obj.matrix_world              #in the same place as the old one
+                                             
+                        scn.objects.link(ob)        #add to scene
+                        objInGroupNew.append(ob)    #add to list of NEW objects
+                        copyModifier(obj,ob)
+                        
+                        scn.update()        
+
+                #rename old object ready for delete
+                oldObj.name = "DELETEME"
+
+                # select all new objects
+                for obj in bpy.data.objects:
+                    for objG in objInGroupNew:
+                        if obj.name in objG.name:
+                            obj.select = True 
+                            bpy.context.scene.objects.active = obj
+                            break
+                        obj.select = False
+                        
+                #apply modifiers(have been copied)
+                bpy.ops.object.convert(target='MESH')
+
+                #apply scale and transform info
+                bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+                                            
+                #make a new object to merge all new objects into, add to scene and set transform based on old one
+                me = bpy.data.meshes.new(group.name)
+                ob = bpy.data.objects.new(group.name, me)
+                scn.objects.link(ob)
+                ob.matrix_world = oldObjmatrix
+                
+                if dovc == True:
+                    vertexColor()
+
+                #select this new object
+                ob.select = True
+                bpy.context.scene.objects.active = ob  #has to be active so join works
+
+                #merge all new objects into one
+                bpy.ops.object.join()
+
+                #copy layer info and modifiers from old models to new one
+                ob.layers = oldObj.layers
+                oldObj.select = True
+                bpy.context.scene.objects.active = oldObj
+                bpy.ops.object.make_links_data(type="MODIFIERS")
+
+                #remove old object
+                scn.objects.unlink(oldObj)
+                oldObj.user_clear()
+                scn.update()
+
+                print("finished " + group.name)
+
+def namebyheight():
+    selobjects = bpy.context.selected_objects
+    activeobject = bpy.context.active_object
+    ypos = -10
+    number = 1
+    objectsYarray = []
+    name = activeobject.name
     
+    if name[-3:].isdigit():
+        name = name[:-4]
+    
+    for object in selobjects:
+        object.name = "temp"
+    
+    for object in selobjects:
+        #reset the array
+        objectsYarray = []
+        #find objects higher than active object
+        for object in selobjects:
+            if object.matrix_world[2][3] > ypos:
+                objectsYarray.append(object)
+            
+            #in objects that are higher, find lowest
+            higherYobjectsMinPos = 100000        
+            for higherYobjects in objectsYarray:
+                if higherYobjects.matrix_world[2][3] < higherYobjectsMinPos:
+                    higherYobjectsMinPos = higherYobjects.matrix_world[2][3]
+            
+        #loop though objects again, if object y pos = it must be the next highest so rename it
+        for object in selobjects:
+            if object.matrix_world[2][3] == higherYobjectsMinPos:
+                # print("lowest object is", object.name ," at ", higherYobjectsMinPos)
+                # this bit is because the naming convention needs to be 3 digits but that data isnt stored anywhere
+                if len(str(number)) == 1:
+                    stringnumber = "00"+str(number)
+                if len(str(number)) == 2:
+                    stringnumber = "0"+str(number)
+                if len(str(number)) == 3:
+                    stringnumber = str(number)
+
+                object.name = name + "." + stringnumber
+                number += 1
+                ypos = higherYobjectsMinPos
+
+def namebyheightgroup():
+    selobj = bpy.context.selected_objects
+    #activeobject = bpy.context.active_object
+        
+    #for objects in group
+    for group in bpy.data.groups:
+        for o in selobj:
+            if group.name == o.name:
+                bpy.ops.object.select_all(action="DESELECT")
+                for obj in group.objects:
+                    obj.select = True
+                    bpy.context.scene.objects.active = obj
+                namebyheight()
+                
+    #bpy.ops.object.select_all(action="DESELECT")
+    #remeber old sel and active objects
+    #bpy.context.selected_objects = selobj
+    #bpy.context.active_object = activeobject
+
 #######################
 ###### OPERATORS ######
 #######################
@@ -398,142 +583,48 @@ class AutoMergeGroups(bpy.types.Operator):
     bl_label = "Unused"
 
     def execute(self, context):
-        print ("-----------------------------")
-        scn = bpy.context.scene
-        selobj = bpy.context.selected_objects
-        doExecute = True
-        groups = []
-
-        #check seleted objects have groups
-        for group in bpy.data.groups:
-            for o in selobj:
-                if group.name == o.name:
-                    #make a list of all objects in group
-                    print ("starting " + group.name)
-                    objInGroup = []
-                    for obj in group.objects:
-                        objInGroup.append(obj)
-
-                    #find object corresponding to group (object to replace has to be named the same as group)
-                    for obj in bpy.data.objects:
-                        if obj.name == group.name:
-                            print("found object for "+ obj.name)
-                            oldObj = obj
-                            oldObjmatrix = obj.matrix_world
-                            objName = obj.name
-                        
-                    #go though list of objects and..
-                    objInGroupNew = []
-                    for obj in objInGroup:
-                        print (obj.name) 
-                        if obj.name != objName:
-                            objData = obj.data.copy()         #get data from object
-
-                            ob = bpy.data.objects.new("MergeMe", objData)   #add that data to a new object
-                            ob.matrix_world = obj.matrix_world              #in the same place as the old one
-                                                 
-                            scn.objects.link(ob)        #add to scene
-                            objInGroupNew.append(ob)    #add to list of NEW objects
-                            copyModifier(obj,ob)
-                            
-                            scn.update()        
-
-                    #rename old object ready for delete
-                    oldObj.name = "DELETEME"
-
-                    # select all new objects
-                    for obj in bpy.data.objects:
-                        for objG in objInGroupNew:
-                            if obj.name in objG.name:
-                                obj.select = True 
-                                bpy.context.scene.objects.active = obj
-                                break
-                            obj.select = False
-                            
-                    #apply modifiers(have been copied)
-                    bpy.ops.object.convert(target='MESH')
-
-                    #apply scale and transform info
-                    bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
-                                                
-                    #make a new object to merge all new objects into, add to scene and set transform based on old one
-                    me = bpy.data.meshes.new(group.name)
-                    ob = bpy.data.objects.new(group.name, me)
-                    scn.objects.link(ob)
-                    ob.matrix_world = oldObjmatrix
-
-                    #select this new object
-                    ob.select = True
-                    bpy.context.scene.objects.active = ob  #has to be active so join works
-
-                    #merge all new objects into one
-                    bpy.ops.object.join()
-
-                    #copy layer info and modifiers from old models to new one
-                    ob.layers = oldObj.layers
-                    oldObj.select = True
-                    bpy.context.scene.objects.active = oldObj
-                    bpy.ops.object.make_links_data(type="MODIFIERS")        
-
-                    #remove old object
-                    scn.objects.unlink(oldObj)
-                    oldObj.user_clear()        
-                    scn.update()
-
-                    print("finished " + group.name)
+        mergeGroups(False)
         return{'FINISHED'}
 
+class AutoMergeGroupsVC(bpy.types.Operator):
+    """Replaces mesh of object name X with all objects in group name X, do vertex colouring based on object name so you can use it on objects with no mesh data, like remesh or skin modifiers"""
+    bl_idname = "bone.automergegroupsvc"
+    bl_label = "Unused"
+
+    def execute(self, context):
+        mergeGroups(True)
+        return{'FINISHED'}
+
+class AutoMergeGroupsNameVC(bpy.types.Operator):
+    """Replaces mesh of object name X with all objects in group name X, do vertex colouring based on object name so you can use it on objects with no mesh data, like remesh or skin modifiers"""
+    bl_idname = "bone.automergegroupsnamevc"
+    bl_label = "Unused"
+
+    def execute(self, context):
+        ao = bpy.context.scene.objects.active.name
+        selobj = bpy.context.selected_objects
+        
+        namebyheightgroup()
+        
+        bpy.ops.object.select_all(action="DESELECT")
+        for obj in selobj:
+            obj.select = True
+                
+        mergeGroups(True)
+        
+        for o in bpy.data.objects:
+            if o.name == ao:
+                bpy.context.scene.objects.active = o
+
+        return{'FINISHED'}
 
 class NameByHeight(bpy.types.Operator):
     """Name objects based on height"""
     bl_idname = "bone.namebyheight"
     bl_label = "Unused"
-    
+
     def execute(self, context):
-
-        selobjects = bpy.context.selected_objects
-        activeobject = bpy.context.active_object
-        ypos = -10
-        number = 1
-        objectsYarray = []
-        name = activeobject.name
-        
-        if name[-3:].isdigit():
-            name = name[:-4]
-        
-        for object in selobjects:
-            object.name = "temp"
-        
-        for object in selobjects:
-            #reset the array
-            objectsYarray = []       
-            #find objects higher than active object
-            for object in selobjects:
-                if object.matrix_world[2][3] > ypos:
-                    objectsYarray.append(object)
-                
-                #in objects that are higher, find lowest
-                higherYobjectsMinPos = 100000        
-                for higherYobjects in objectsYarray:
-                    if higherYobjects.matrix_world[2][3] < higherYobjectsMinPos:
-                        higherYobjectsMinPos = higherYobjects.matrix_world[2][3]
-                
-            #loop though objects again, if object y pos = it must be the next highest so rename it
-            for object in selobjects:
-                if object.matrix_world[2][3] == higherYobjectsMinPos:
-                    # print("lowest object is", object.name ," at ", higherYobjectsMinPos)
-                    # this bit is because the naming convention needs to be 3 digits but that data isnt stored anywhere
-                    if len(str(number)) == 1:
-                        stringnumber = "00"+str(number)
-                    if len(str(number)) == 2:
-                        stringnumber = "0"+str(number)
-                    if len(str(number)) == 3:
-                        stringnumber = str(number)
-                    
-                    object.name = name + "." + stringnumber
-                    number += 1
-                    ypos = higherYobjectsMinPos                    
-
+        namebyheight()
         return{'FINISHED'}
 
 class VertexValueByName(bpy.types.Operator):
@@ -542,42 +633,7 @@ class VertexValueByName(bpy.types.Operator):
     bl_label = "Unused"
     
     def execute(self, context):
-         
-        # start in object mode
-        obj = bpy.context.selected_objects
-
-        for o in obj:
-            mesh = o.data
-            
-            if not mesh.vertex_colors:
-                mesh.vertex_colors.new()
-
-            """
-            let us assume for sake of brevity that there is now 
-            a vertex color map called  'Col'    
-            """
-
-            color_layer = mesh.vertex_colors["Col"]
-
-            # or you could avoid using the color_layer name
-            # color_layer = mesh.vertex_colors.active  
-            i = 0
-
-            value = o.name[-3:]
-            value = float(value)
-            value = value / 255
-            print (value)            
-
-            rgb = [value,value,value]
-
-            for poly in mesh.polygons:
-                for idx in poly.loop_indices:            
-                    color_layer.data[i].color = rgb
-                    i += 1
-
-            # set to vertex paint mode to see the result
-            # bpy.ops.object.mode_set(mode='VERTEX_PAINT')
-
+        vertexColor()
         return{'FINISHED'}
 
 
@@ -601,7 +657,7 @@ class KeyFrameAllActions(bpy.types.Operator):
             fcurvepathindex=[]  
             kfpvalue=[]
             fcgroup=[]
-                                 
+
             #create a list of f curve indexs the selected bone uses, bones must allready have keys for this to work
             for f in bpy.data.actions[action.name].fcurves:
                 fstr = (str(f.data_path))
@@ -673,7 +729,7 @@ class KeyFrameAllActionsConstraints(bpy.types.Operator):
         return{'FINISHED'}        
 
 class RemoveKeyFrames(bpy.types.Operator):
-    """ Remove selected bone keyframes from all actions """
+    """ Remove se bone keyframes from all actions """
     bl_idname = "bone.removekeyframes"
     bl_label = "Unused"
 
@@ -891,8 +947,6 @@ class KeyframeFirstToLast(bpy.types.Operator):
     """Duplicate first keyframe and move to the last """
     bl_idname = "bone.keyframefirsttolast"
     bl_label = "Unused"
-    
-
 
     def execute(self, context):
         action = bpy.context.object.animation_data.action   #current action  
@@ -1076,9 +1130,10 @@ class FbxExport(bpy.types.Operator):
 
 class FActionList(bpy.types.UIList):
     def draw_item(self, context, layout, data, item, icon, active_data, active_propname):
-        row = layout.row(False)
-        row.prop(item,"name", text = "", emboss= False)
-        row.prop(item,"Export", text = "");
+        if bpy.context.active_object != None:
+            row = layout.row(False)
+            row.prop(item,"name", text = "", emboss= False)
+            row.prop(item,"Export", text = "");
 
 
 ################
@@ -1290,7 +1345,8 @@ class FrankiesAnimationToolsObject(bpy.types.Panel):
         row.operator("bone.fbxexportanim", text="Export Animations")
         row.operator("bone.fbxexport", text="Export All")
 
-        layout.template_list("FActionList", "", bpy.data, "actions", obj, "action_list_index", rows=2)
+        if bpy.context.scene.objects.active != None:
+            layout.template_list("FActionList", "", bpy.data, "actions", obj, "action_list_index", rows=2)
         row = layout.row(align=True)
         row.operator("bone.toggleactionexport", text="Toggle")
         row = layout.row(align=True)
@@ -1305,8 +1361,10 @@ class FrankiesAnimationToolsObject(bpy.types.Panel):
         row = layout.row(align=True)
         row.operator("bone.automergegroups", text="AutoMerge Groups to Objects")
         row = layout.row(align=True)
-
-
+        row.operator("bone.automergegroupsvc", text="Vertex Color & AutoMerge ")
+        row = layout.row(align=True)
+        row.operator("bone.automergegroupsnamevc", text="Name, VC & Merge ")
+        row = layout.row(align=True)
 
 #def draw_item(self, context):
 #    layout = self.layout
@@ -1350,7 +1408,8 @@ def register():
     bpy.utils.register_class(NameByHeight)
     bpy.utils.register_class(VertexValueByName)
     bpy.utils.register_class(AutoMergeGroups)
-    
+    bpy.utils.register_class(AutoMergeGroupsVC)
+    bpy.utils.register_class(AutoMergeGroupsNameVC)
 
 def unregister():
 
@@ -1385,6 +1444,8 @@ def unregister():
     bpy.utils.unregister_class(NameByHeight)
     bpy.utils.unregister_class(VertexValueByName)
     bpy.utils.unregister_class(AutoMergeGroups)
+    bpy.utils.unregister_class(AutoMergeGroupsVC)
+    bpy.utils.unregister_class(AutoMergeGroupsNameVC)
     del bpy.types.Object.action_list_index
 
 if __name__ == "__main__":
