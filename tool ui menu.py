@@ -27,6 +27,7 @@ bl_info = {
 
 import bpy
 import random
+import os
 from bpy.props import *
 
 ########################
@@ -208,12 +209,39 @@ def export_fbx_anim_multiple_settings():
     }    
 
 def export_fbx():
-    exportpath = bpy.context.scene.FbxExportPath + bpy.context.scene.name +".fbx"
+    
+    sceneexportpath = bpy.context.scene.FbxExportPath
+    
+    if sceneexportpath == "":
+        filepath = bpy.data.filepath
+        sceneexportpath = os.path.dirname(filepath) + "\\"
+
+    if sceneexportpath[:2] == "..":
+        filepath = bpy.data.filepath
+        sceneexportpath = os.path.dirname(filepath) + "\\" + sceneexportpath
+
+    exportpath = sceneexportpath + bpy.context.scene.name +".fbx"
+    print (exportpath)
     bpy.ops.export_scene.fbx(filepath=exportpath, **export_fbx_settings())
     return()
 
 def export_fbx_mesh():
-    exportpath = bpy.context.scene.FbxExportPath + bpy.context.scene.name +".fbx"
+
+    framenumber =""
+    sceneexportpath = bpy.context.scene.FbxExportPath
+
+    if sceneexportpath == "":
+        filepath = bpy.data.filepath
+        sceneexportpath = os.path.dirname(filepath) + "\\"
+
+    if sceneexportpath[:2] == "..":
+        filepath = bpy.data.filepath
+        sceneexportpath = os.path.dirname(filepath) + "\\" + sceneexportpath
+
+    if bpy.context.scene.AnimMiddleFix == "FRAME":
+        framenumber = "{:02d}".format(bpy.context.scene.frame_current)
+
+    exportpath = sceneexportpath + bpy.context.scene.name + framenumber +".fbx"
     bpy.ops.export_scene.fbx(filepath=exportpath, **export_fbx_mesh_settings())
     return()
 
@@ -224,7 +252,15 @@ def export_fbx_anim():
     currentaction = bpy.context.object.animation_data.action
     currentscene = bpy.context.scene
 
-    exportpath = bpy.context.scene.FbxExportPath + bpy.context.scene.name +".fbx"
+    if sceneexportpath == "":
+        filepath = bpy.data.filepath
+        sceneexportpath = os.path.dirname(filepath) + "\\"
+
+    if sceneexportpath[:2] == "..":
+        filepath = bpy.data.filepath
+        sceneexportpath = os.path.dirname(filepath) + "\\" + sceneexportpath
+
+    exportpath = sceneexportpath + bpy.context.scene.name +".fbx"
 
     #sets correct mute and unmuting
     for nlatrack in bpy.context.object.animation_data.nla_tracks:
@@ -407,9 +443,13 @@ def vertexColor():
         i = 0
 
         value = o.name[-3:]
-        value = float(value)
+        try:
+            value = float(value)
+        except:
+            value = 0
+            
+        print (o.name + " getting value " + str(value))
         value = value / 255
-        print (value)            
 
         rgb = [value,value,value]
 
@@ -417,6 +457,7 @@ def vertexColor():
             for idx in poly.loop_indices:
                 color_layer.data[i].color = rgb
                 i += 1
+
 
         # set to vertex paint mode to see the result
         # bpy.ops.object.mode_set(mode='VERTEX_PAINT')
@@ -450,7 +491,7 @@ def mergeGroups(dovc):
                 #go though list of objects and..
                 objInGroupNew = []
                 for obj in objInGroup:
-                    print (obj.name) 
+                    print ("obj name = " + obj.name) 
                     if obj.name != objName:
                         objData = obj.data.copy()         #get data from object
 
@@ -510,14 +551,17 @@ def mergeGroups(dovc):
 
                 print("finished " + group.name)
 
-def namebyheight():
-    selobjects = bpy.context.selected_objects
-    activeobject = bpy.context.active_object
+def namebyheight(gbhname):
+    selobjects = bpy.context.selected_objects    
+    if gbhname == None:
+        activeobject = bpy.context.active_object
+        name = activeobject.name
+    else:
+        name = gbhname + gbhname
     ypos = -10
     number = 1
     objectsYarray = []
-    name = activeobject.name
-    
+
     if name[-3:].isdigit():
         name = name[:-4]
     
@@ -566,7 +610,7 @@ def namebyheightgroup():
                 for obj in group.objects:
                     obj.select = True
                     bpy.context.scene.objects.active = obj
-                namebyheight()
+                namebyheight(group.name)
                 
     #bpy.ops.object.select_all(action="DESELECT")
     #remeber old sel and active objects
@@ -601,21 +645,23 @@ class AutoMergeGroupsNameVC(bpy.types.Operator):
     bl_label = "Unused"
 
     def execute(self, context):
+        print("7777777777777777777777777")
         ao = bpy.context.scene.objects.active.name
+        print (ao)
         selobj = bpy.context.selected_objects
-        
+
         namebyheightgroup()
-        
+
         bpy.ops.object.select_all(action="DESELECT")
         for obj in selobj:
             obj.select = True
                 
         mergeGroups(True)
-        
-        for o in bpy.data.objects:
-            if o.name == ao:
-                bpy.context.scene.objects.active = o
-
+        """
+        for obj in bpy.data.objects:
+            if obj.name == ao:
+                bpy.context.scene.objects.active = obj
+        """
         return{'FINISHED'}
 
 class NameByHeight(bpy.types.Operator):
@@ -624,7 +670,7 @@ class NameByHeight(bpy.types.Operator):
     bl_label = "Unused"
 
     def execute(self, context):
-        namebyheight()
+        namebyheight(None)
         return{'FINISHED'}
 
 class VertexValueByName(bpy.types.Operator):
@@ -1257,7 +1303,6 @@ class FrankiesAnimationTools(bpy.types.Panel):
         col.operator("bone.removekeyframesapartfromone", text="Remove all but first keyframe on filtered actions")
         
         row.prop(context.scene, "SelBoneOnly")
-
         
         col = layout.column(align=True)
         col.label(text="Actions:")
@@ -1296,7 +1341,6 @@ class FrankiesAnimationTools(bpy.types.Panel):
         row.operator("bone.unmutenlastrips", text="Unmute All")
         row.operator("bone.mutenlastrips", text="Mute All")
 
-
         col = layout.column(align=True)
         col.label(text="Selection and visibility:")
 
@@ -1308,7 +1352,6 @@ class FrankiesAnimationTools(bpy.types.Panel):
         row.prop(obj, "hide", text="hide obje")
         row.prop(obj, "hide_select", text="hide select")
         row.prop(context.object, "hide_render")
-
 
 class FrankiesAnimationToolsObject(bpy.types.Panel):
     """Creates a custom Object Panel in the 3D View"""
